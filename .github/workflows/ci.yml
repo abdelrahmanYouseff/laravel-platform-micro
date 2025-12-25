@@ -42,9 +42,9 @@ jobs:
       - name: Install Composer dependencies
         run: |
           cd services/auth-service
-          composer install --no-dev --optimize-autoloader
+          composer install --optimize-autoloader
           cd ../product-service
-          composer install --no-dev --optimize-autoloader
+          composer install  --optimize-autoloader
 
       - name: Wait for MySQL
         run: |
@@ -125,9 +125,11 @@ jobs:
           DB_PASSWORD: password
         run: |
           cd services/auth-service
-          php artisan test
+          ./vendor/bin/phpunit
+
           cd ../product-service
-          php artisan test
+          ./vendor/bin/phpunit
+
 
       - name: Set up Docker Buildx
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
