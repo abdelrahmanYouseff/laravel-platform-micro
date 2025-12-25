@@ -1,0 +1,86 @@
+services:
+  # MySQL Database
+  mysql:
+    image: mysql:8.0
+    container_name: platform-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: platform_db
+      MYSQL_USER: platform_user
+      MYSQL_PASSWORD: platform_password
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - platform-network
+
+  # Auth Service
+  auth-service:
+    build:
+      context: ./services/auth-service
+      dockerfile: Dockerfile
+    container_name: auth-service
+    restart: unless-stopped
+    volumes:
+      - ./services/auth-service:/var/www/html
+      - ./services/auth-service/storage:/var/www/html/storage
+    networks:
+      - platform-network
+    depends_on:
+      - mysql
+    environment:
+      - DB_CONNECTION=mysql
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_DATABASE=platform_db
+      - DB_USERNAME=platform_user
+      - DB_PASSWORD=platform_password
+
+  # Product Service
+  product-service:
+    build:
+      context: ./services/product-service
+      dockerfile: Dockerfile
+    container_name: product-service
+    restart: unless-stopped
+    volumes:
+      - ./services/product-service:/var/www/html
+      - ./services/product-service/storage:/var/www/html/storage
+    networks:
+      - platform-network
+    depends_on:
+      - mysql
+    environment:
+      - DB_CONNECTION=mysql
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_DATABASE=platform_db
+      - DB_USERNAME=platform_user
+      - DB_PASSWORD=platform_password
+
+  # Nginx
+  nginx:
+    image: nginx:alpine
+    container_name: platform-nginx
+    restart: unless-stopped
+    ports:
+      - "8000:80"
+      - "8001:81"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    networks:
+      - platform-network
+    depends_on:
+      - auth-service
+      - product-service
+
+networks:
+  platform-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+    driver: local
+

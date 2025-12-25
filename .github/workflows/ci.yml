@@ -1,0 +1,155 @@
+name: CI for Microservices
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: auth_service_db
+          MYSQL_USER: user
+          MYSQL_PASSWORD: password
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping --silent"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=3
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          extensions: mbstring, pdo_mysql, bcmath, gd
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: |
+          cd services/auth-service
+          composer install --no-dev --optimize-autoloader
+          cd ../product-service
+          composer install --no-dev --optimize-autoloader
+
+      - name: Wait for MySQL
+        run: |
+          until mysqladmin ping -h 127.0.0.1 -P 3306 -u user -ppassword --silent; do
+            echo "Waiting for MySQL..."
+            sleep 2
+          done
+          echo "MySQL is ready!"
+
+      - name: Setup Environment Files
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: auth_service_db
+          DB_USERNAME: user
+          DB_PASSWORD: password
+        run: |
+          # Auth Service
+          cd services/auth-service
+          if [ -f .env.example ]; then
+            cp .env.example .env
+          else
+            echo "APP_NAME=AuthService" > .env
+            echo "APP_ENV=testing" >> .env
+            echo "APP_KEY=" >> .env
+            echo "APP_DEBUG=false" >> .env
+            echo "DB_CONNECTION=mysql" >> .env
+            echo "DB_HOST=127.0.0.1" >> .env
+            echo "DB_PORT=3306" >> .env
+            echo "DB_DATABASE=auth_service_db" >> .env
+            echo "DB_USERNAME=user" >> .env
+            echo "DB_PASSWORD=password" >> .env
+          fi
+          php artisan key:generate
+          cd ../..
+          
+          # Product Service
+          cd services/product-service
+          if [ -f .env.example ]; then
+            cp .env.example .env
+          else
+            echo "APP_NAME=ProductService" > .env
+            echo "APP_ENV=testing" >> .env
+            echo "APP_KEY=" >> .env
+            echo "APP_DEBUG=false" >> .env
+            echo "DB_CONNECTION=mysql" >> .env
+            echo "DB_HOST=127.0.0.1" >> .env
+            echo "DB_PORT=3306" >> .env
+            echo "DB_DATABASE=auth_service_db" >> .env
+            echo "DB_USERNAME=user" >> .env
+            echo "DB_PASSWORD=password" >> .env
+          fi
+          php artisan key:generate
+          cd ../..
+
+      - name: Run Migrations
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: auth_service_db
+          DB_USERNAME: user
+          DB_PASSWORD: password
+        run: |
+          cd services/auth-service
+          php artisan migrate --force
+          cd ../product-service
+          php artisan migrate --force
+
+      - name: Run Tests
+        env:
+          DB_CONNECTION: mysql
+          DB_HOST: 127.0.0.1
+          DB_PORT: 3306
+          DB_DATABASE: auth_service_db
+          DB_USERNAME: user
+          DB_PASSWORD: password
+        run: |
+          cd services/auth-service
+          php artisan test
+          cd ../product-service
+          php artisan test
+
+      - name: Set up Docker Buildx
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.GHCR_USERNAME }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
+      - name: Build and Push Auth Service Image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker build -t ghcr.io/${{ secrets.GHCR_USERNAME }}/auth-service:latest ./services/auth-service
+          docker push ghcr.io/${{ secrets.GHCR_USERNAME }}/auth-service:latest
+
+      - name: Build and Push Product Service Image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker build -t ghcr.io/${{ secrets.GHCR_USERNAME }}/product-service:latest ./services/product-service
+          docker push ghcr.io/${{ secrets.GHCR_USERNAME }}/product-service:latest
+
