@@ -171,18 +171,20 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.repository_owner }}
+          username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and Push Auth Service Image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          docker build -t ghcr.io/${{ github.repository_owner }}/auth-service:latest ./services/auth-service
-          docker push ghcr.io/${{ github.repository_owner }}/auth-service:latest
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker build -t ghcr.io/${OWNER}/auth-service:latest ./services/auth-service
+          docker push ghcr.io/${OWNER}/auth-service:latest
 
       - name: Build and Push Product Service Image
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          docker build -t ghcr.io/${{ github.repository_owner }}/product-service:latest ./services/product-service
-          docker push ghcr.io/${{ github.repository_owner }}/product-service:latest
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          docker build -t ghcr.io/${OWNER}/product-service:latest ./services/product-service
+          docker push ghcr.io/${OWNER}/product-service:latest
 
